@@ -1,0 +1,147 @@
+getgenv = function()
+    -- Create a local settings table with the specified values
+    local settings = {
+        camlock_enable = true,
+        notification = true,
+        prediction = 0.139,
+        smoothness = 0.9,
+        shake = 0.1  -- Reducing shake intensity for smoother movement
+    }
+    
+    -- Create the tool
+    local tool = Instance.new("Tool")
+    tool.Name = "Kalina Tool"
+    tool.RequiresHandle = false
+
+    local isLocking = false
+    local lockedPlayer = nil
+    local lockDot = nil
+
+    -- Function to show notification
+    local function showNotification(message)
+        game.StarterGui:SetCore("SendNotification", {
+            Title = "Kalina Tool",
+            Text = message,
+            Duration = 3
+        })
+    end
+
+    -- Function to create a circular billboard GUI dot
+    local function createLockDot(parent)
+        local billboardGui = Instance.new("BillboardGui")
+        billboardGui.Size = UDim2.new(0, 10, 0, 10)  -- Adjust size as needed
+        billboardGui.Adornee = parent
+        billboardGui.AlwaysOnTop = true
+
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 1, 0)
+        frame.BackgroundTransparency = 0
+        frame.BackgroundColor3 = Color3.fromRGB(0, 255, 0)  -- Green color for lock
+        frame.BorderSizePixel = 0
+        frame.Parent = billboardGui
+
+        -- Circular shape
+        local circle = Instance.new("UICircle")
+        circle.Parent = frame
+
+        return billboardGui
+    end
+
+    -- Tool activation function
+    tool.Activated:Connect(function()
+        if not isLocking then
+            -- Find the nearest player to lock onto
+            local camera = game.Workspace.CurrentCamera
+            local nearestPlayer = nil
+            local minDist = math.huge
+            local playerPosition = game.Players.LocalPlayer.Character.HumanoidRootPart.Position
+            for _, player in ipairs(game.Players:GetPlayers()) do
+                if player ~= game.Players.LocalPlayer then
+                    local playerCharacter = player.Character
+                    if playerCharacter and playerCharacter:FindFirstChild("HumanoidRootPart") then
+                        local dist = (playerCharacter.HumanoidRootPart.Position - playerPosition).magnitude
+                        if dist < minDist then
+                            minDist = dist
+                            nearestPlayer = player
+                        end
+                    end
+                end
+            end
+
+            if nearestPlayer then
+                lockedPlayer = nearestPlayer
+                isLocking = true
+
+                -- Create and show lock dot
+                if not lockDot then
+                    lockDot = createLockDot(lockedPlayer.Character.HumanoidRootPart)
+                    lockDot.Parent = lockedPlayer.Character
+                end
+
+                if settings.notification then
+                    showNotification("Locked on: " .. lockedPlayer.Name)
+                end
+
+                -- Start locking onto the player
+                while isLocking and lockedPlayer and lockedPlayer.Character and lockedPlayer.Character:FindFirstChild("HumanoidRootPart") do
+                    -- Lock onto the player
+                    local lookVector = (lockedPlayer.Character.HumanoidRootPart.Position - camera.CFrame.Position).unit
+                    local newCFrame = CFrame.new(camera.CFrame.Position, camera.CFrame.Position + lookVector)
+
+                    -- Smooth camera movement
+                    camera.CFrame = camera.CFrame:Lerp(newCFrame, settings.smoothness)
+
+                    -- Shake the camera (optional)
+                    if settings.shake > 0 then
+                        local shakeMagnitude = settings.shake
+                        local shakeIntensity = 0.01
+                        local shakeOffset = Vector3.new(math.random(-shakeMagnitude, shakeMagnitude), math.random(-shakeMagnitude, shakeMagnitude), 0)
+                        camera.CFrame = camera.CFrame * CFrame.new(shakeOffset * shakeIntensity)
+                    end
+                    wait()  -- Minimal wait to avoid locking delay
+                end
+
+                -- Unlock the player
+                if settings.notification then
+                    showNotification("Unlocked from: " .. lockedPlayer.Name)
+                end
+                if lockDot then
+                    lockDot:Destroy()
+                    lockDot = nil
+                end
+                isLocking = false
+                lockedPlayer = nil
+            end
+        else
+            if settings.notification then
+                showNotification("Unlocked from: " .. (lockedPlayer and lockedPlayer.Name or "None"))
+            end
+            if lockDot then
+                lockDot:Destroy()
+                lockDot = nil
+            end
+            isLocking = false
+            lockedPlayer = nil
+        end
+    end)
+
+    -- Return the tool along with the settings
+    return {
+        tool = tool,
+        settings = settings
+    }
+end
+
+-- Example of how to access the tool and its settings
+local kalina = getgenv()
+local kalinaTool = kalina.tool
+local kalinaSettings = kalina.settings
+
+-- Connect to CharacterAdded event to handle character removal
+local player = game.Players.LocalPlayer
+player.CharacterAdded:Connect(function()
+    kalinaTool.Parent = game.Players.LocalPlayer.Backpack
+end)
+
+-- Parent the tool to the player's Backpack initially
+kalinaTool.Parent = game.Players.LocalPlayer.Backpack
